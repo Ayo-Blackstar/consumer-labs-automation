@@ -25,23 +25,18 @@ function isDuplicateEmail(email) {
 
 function abbreviateTitle(title) {
   const map = {
+    'which of these sounds most like you': 'Current Situation',
+    'roughly what did the business turn over': 'Annual Revenue',
+    'what could you commit as tiktok shop ad spend': 'Ad Spend Budget',
     'first name': 'First Name',
     'last name': 'Last Name',
-    'phone': 'Phone',
-    'email': 'Email',
-    'company': 'Company',
-    'business name': 'Business Name',
-    'website': 'Website',
-    'how did you hear': 'Source',
-    'what is your monthly revenue': 'Monthly Revenue',
-    'what is your biggest challenge': 'Biggest Challenge',
-    'how soon': 'Timeline',
-    'investment': 'Investment',
-    'what industry': 'Industry',
-    'what does your team': 'Team Size',
-    'book': 'Calendar Booking',
-    'schedule': 'Calendar Booking',
-    'calendly': 'Calendar Booking',
+    'work email': 'Email',
+    'brand name': 'Brand Name',
+    'website url': 'Website',
+    'tiktok shop runs on sampling': 'Product Sampling',
+    'management is $4,100': 'Management Fee',
+    'now, book your tiktok shop strategy call': 'Strategy Call Booking',
+    'book your tiktok shop consultancy call': 'Consultancy Call Booking',
   };
   const lower = title.toLowerCase();
   for (const [key, val] of Object.entries(map)) {
@@ -52,6 +47,62 @@ function abbreviateTitle(title) {
 
 function getContactGHLLink(contactId) {
   return `https://app.gohighlevel.com/v2/location/${process.env.GHL_LOCATION_ID}/contacts/detail/${contactId}`;
+}
+
+function determineQualification(answers, fields_def) {
+  let isQualified = false;
+  let hasHighRevenue = false;
+  let hasAdBudget = false;
+
+  answers.forEach((answer, index) => {
+    const fieldDef = fields_def[index];
+    const titleLower = (fieldDef?.title || '').toLowerCase();
+    let value = '';
+    if (answer.type === 'choice') value = answer.choice?.label || '';
+    else if (answer.type === 'text') value = answer.text || '';
+
+    const valueLower = value.toLowerCase();
+
+    // Revenue check — £500K+ = high revenue
+    if (titleLower.includes('turn over')) {
+      if (
+        valueLower.includes('500k') || valueLower.includes('500k–1m') ||
+        valueLower.includes('1m') || valueLower.includes('2m') ||
+        valueLower.includes('5m') || valueLower.includes('10m') ||
+        valueLower.includes('£1') || valueLower.includes('£2') ||
+        valueLower.includes('£5') || valueLower.includes('£10')
+      ) {
+        hasHighRevenue = true;
+      }
+    }
+
+    // Ad spend check — £5K+ = has budget
+    if (titleLower.includes('ad spend')) {
+      if (
+        valueLower.includes('£5') || valueLower.includes('£10') ||
+        valueLower.includes('£25') || valueLower.includes('£50') ||
+        valueLower.includes('5k') || valueLower.includes('10k') ||
+        valueLower.includes('25k') || valueLower.includes('50k') ||
+        valueLower.includes('5–10') || valueLower.includes('10–25') ||
+        valueLower.includes('25k+') || valueLower.includes('>£25')
+      ) {
+        hasAdBudget = true;
+      }
+    }
+
+    // Management fee check — Yes = qualified
+    if (titleLower.includes('management is')) {
+      if (valueLower === 'yes') isQualified = true;
+    }
+  });
+
+  if (isQualified && hasHighRevenue && hasAdBudget) {
+    return { tier: 'gold', color: COLORS.GOLD, prefix: '🥇', label: 'PREMIUM QUALIFIED' };
+  } else if (isQualified || hasHighRevenue) {
+    return { tier: 'green', color: COLORS.GREEN, prefix: '🟢', label: 'QUALIFIED' };
+  } else {
+    return { tier: 'blue', color: COLORS.BLUE, prefix: '📞', label: 'UNQUALIFIED' };
+  }
 }
 
 async function createGHLContact(contactData) {
@@ -98,7 +149,7 @@ async function updateGHLContact(contactId, data) {
   }
 }
 
-async function createGHLOpportunity(contact, stageId, monetaryValue, source) {
+async function createGHLOpportunity(contact, stageId, source) {
   try {
     const pipelineId = process.env.GHL_PIPELINE_ID;
     if (!pipelineId || !stageId || !contact?.id) return null;
@@ -112,7 +163,6 @@ async function createGHLOpportunity(contact, stageId, monetaryValue, source) {
         name,
         locationId: process.env.GHL_LOCATION_ID,
         status: 'open',
-        monetaryValue,
         source,
       },
       {
@@ -210,14 +260,16 @@ router.post('/webhook', async (req, res) => {
     let hasCalendly = false;
     let firstName = '';
     let lastName = '';
-    let phone = '';
     let email = '';
-    let source = '';
+    let companyName = '';
+    let website = '';
     let calendlyValue = '';
-    const noteLines = ['📋 Typeform Application:\n'];
+    const noteLines = ['📋 TikTok Shop Application:\n'];
 
     const now = new Date().toLocaleDateString('en-GB');
     discordFields.push({ name: 'Time', value: now, inline: true });
+
+    const qualification = determineQualification(answers, fields_def);
 
     answers.forEach((answer, index) => {
       const fieldDef = fields_def[index];
@@ -228,15 +280,11 @@ router.post('/webhook', async (req, res) => {
       switch (answer.type) {
         case 'text': value = answer.text || ''; break;
         case 'email': value = answer.email || ''; email = value; break;
-        case 'phone_number': value = answer.phone_number || ''; phone = value; break;
+        case 'phone_number': value = answer.phone_number || ''; break;
         case 'choice': value = answer.choice?.label || ''; break;
         case 'choices': value = answer.choices?.labels?.join(', ') || ''; break;
         case 'boolean': value = answer.boolean ? 'Yes' : 'No'; break;
         case 'number': value = String(answer.number) || ''; break;
-        case 'calendly':
-          hasCalendly = true;
-          calendlyValue = answer.url || 'Call Booked ✅';
-          return;
         case 'url':
           value = answer.url || '';
           if (value.includes('calendly.com') && value.includes('invitees')) {
@@ -245,6 +293,10 @@ router.post('/webhook', async (req, res) => {
             return;
           }
           break;
+        case 'calendly':
+          hasCalendly = true;
+          calendlyValue = answer.url || '';
+          return;
         default:
           value = answer.url || answer.text || answer.email || '';
           if (value && value.includes('calendly.com') && value.includes('invitees')) {
@@ -257,14 +309,8 @@ router.post('/webhook', async (req, res) => {
       const titleLower = rawTitle.toLowerCase();
       if (titleLower.includes('first name')) firstName = value;
       if (titleLower.includes('last name')) lastName = value;
-      if (titleLower.includes('how did you hear')) source = value;
-
-      if (fieldTitle === 'Calendar Booking') {
-        if (value && value.includes('calendly.com')) {
-          discordFields.push({ name: 'Call Booking', value: String(value).substring(0, 1024), inline: true });
-        }
-        return;
-      }
+      if (titleLower.includes('brand name')) companyName = value;
+      if (titleLower.includes('website')) website = value;
 
       if (value) {
         noteLines.push(`${fieldTitle}: ${value}`);
@@ -276,31 +322,33 @@ router.post('/webhook', async (req, res) => {
       }
     });
 
-    // UTM data
+    // UTM / hidden fields
     if (hidden && Object.keys(hidden).length > 0) {
       const utmLines = Object.entries(hidden)
-        .filter(([k, v]) => v && v.trim())
+        .filter(([k, v]) => v && v.trim() && v !== 'hidden_value')
         .map(([k, v]) => `**${k}:** ${v}`)
         .join('\n');
       if (utmLines) {
         discordFields.push({ name: 'ATTRIBUTION', value: utmLines, inline: false });
-        noteLines.push(`\nUTM Attribution:\n${Object.entries(hidden).filter(([k,v]) => v).map(([k,v]) => `${k}: ${v}`).join('\n')}`);
+        noteLines.push(`\nAttribution:\n${utmLines}`);
       }
     }
 
     const noteText = noteLines.join('\n');
 
+    // Create GHL contact
     const contact = await createGHLContact({
       firstName,
       lastName,
       email,
-      phone,
+      companyName,
       locationId: process.env.GHL_LOCATION_ID,
-      source: source || 'typeform',
+      source: 'typeform',
       tags: ['typeform-lead'],
     });
 
-    const fullName = `${firstName} ${lastName}`.trim() || email;
+    // Add GHL contact link
+    const fullName = `${firstName} ${lastName}`.trim() || companyName || email;
     if (contact?.id) {
       const ghlLink = getContactGHLLink(contact.id);
       discordFields.splice(1, 0, { name: 'Contact', value: `[${fullName}](${ghlLink})`, inline: true });
@@ -309,34 +357,34 @@ router.post('/webhook', async (req, res) => {
     if (hasCalendly) {
       if (contact?.id) {
         const updateData = { tags: ['typeform-lead', 'typeform-booked'] };
-        if (phone) updateData.phone = phone;
         if (firstName) updateData.firstName = firstName;
         if (lastName) updateData.lastName = lastName;
         await updateGHLContact(contact.id, updateData);
 
         const existing = await findAndUpdateOpportunityStage(contact.id, process.env.GHL_PIPELINE_BOOKED_STAGE_ID);
         if (!existing) {
-          await createGHLOpportunity(contact, process.env.GHL_PIPELINE_BOOKED_STAGE_ID, 0, 'typeform');
+          await createGHLOpportunity(contact, process.env.GHL_PIPELINE_BOOKED_STAGE_ID, qualification.tier);
         }
         await addGHLNote(contact.id, noteText);
       }
 
-      if (calendlyValue && !discordFields.find(f => f.name === 'Call Booking')) {
+      if (calendlyValue) {
         discordFields.push({ name: 'Call Booking', value: String(calendlyValue).substring(0, 1024), inline: true });
       }
 
-      const embed = createEmbed('📞 New Call Booked', discordFields, COLORS.GOLD);
+      const title = `${qualification.prefix} New Call Booked - ${qualification.label}`;
+      const embed = createEmbed(title, discordFields, qualification.color);
       await sendDiscordMessage(process.env.DISCORD_WEBHOOK_BOOKED_CALLS, embed);
 
     } else {
       if (!isDuplicateEmail(email)) {
         if (contact?.id) {
-          if (phone) await updateGHLContact(contact.id, { phone });
-          await createGHLOpportunity(contact, process.env.GHL_PIPELINE_STAGE_ID, 0, 'typeform');
+          await createGHLOpportunity(contact, process.env.GHL_PIPELINE_STAGE_ID, qualification.tier);
           await addGHLNote(contact.id, noteText);
         }
 
-        const embed = createEmbed('🆕 New Lead Optin', discordFields, COLORS.BLUE);
+        const title = `${qualification.prefix} New Lead Optin - ${qualification.label}`;
+        const embed = createEmbed(title, discordFields, qualification.color);
         await sendDiscordMessage(process.env.DISCORD_WEBHOOK_NEW_LEADS, embed);
       }
     }
