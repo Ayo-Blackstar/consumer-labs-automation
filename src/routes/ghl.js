@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { sendDiscordMessage, createEmbed, COLORS } = require('../utils/discord');
+const axios = require('axios');
 
 const recentNotifications = new Map();
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -51,6 +52,41 @@ function buildCallFields(body, stage) {
   if (body.closed_by) fields.push({ name: '🏆 Closed By', value: body.closed_by, inline: true });
 
   return fields;
+}
+
+async function addGHLNote(contactId, noteText) {
+  try {
+    const headers = {
+      'Authorization': `Bearer ${process.env.GHL_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    };
+
+    await axios.post(
+      `https://services.leadconnectorhq.com/contacts/${contactId}/notes`,
+      { body: noteText },
+      { headers }
+    );
+    console.log('Contact note added for:', contactId);
+
+    const oppResponse = await axios.get(
+      `https://services.leadconnectorhq.com/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&contact_id=${contactId}`,
+      { headers }
+    );
+    const opportunities = oppResponse.data?.opportunities || [];
+    const opportunity = opportunities.find(o => o.pipelineId === process.env.GHL_PIPELINE_ID) || opportunities[0];
+
+    if (opportunity) {
+      await axios.put(
+        `https://services.leadconnectorhq.com/opportunities/${opportunity.id}`,
+        { notes: noteText },
+        { headers }
+      );
+      console.log('Opportunity notes updated for:', opportunity.id);
+    }
+  } catch (err) {
+    console.error('GHL note error:', err.response?.data || err.message);
+  }
 }
 
 router.post('/booked-call', async (req, res) => {
