@@ -60,10 +60,8 @@ function determineQualification(answers, fields_def) {
     let value = '';
     if (answer.type === 'choice') value = answer.choice?.label || '';
     else if (answer.type === 'text') value = answer.text || '';
-
     const valueLower = value.toLowerCase();
 
-    // Revenue check — £500K+ = high revenue
     if (titleLower.includes('turn over')) {
       if (
         valueLower.includes('500k') || valueLower.includes('500k–1m') ||
@@ -71,12 +69,9 @@ function determineQualification(answers, fields_def) {
         valueLower.includes('5m') || valueLower.includes('10m') ||
         valueLower.includes('£1') || valueLower.includes('£2') ||
         valueLower.includes('£5') || valueLower.includes('£10')
-      ) {
-        hasHighRevenue = true;
-      }
+      ) hasHighRevenue = true;
     }
 
-    // Ad spend check — £5K+ = has budget
     if (titleLower.includes('ad spend')) {
       if (
         valueLower.includes('£5') || valueLower.includes('£10') ||
@@ -85,12 +80,9 @@ function determineQualification(answers, fields_def) {
         valueLower.includes('25k') || valueLower.includes('50k') ||
         valueLower.includes('5–10') || valueLower.includes('10–25') ||
         valueLower.includes('25k+') || valueLower.includes('>£25')
-      ) {
-        hasAdBudget = true;
-      }
+      ) hasAdBudget = true;
     }
 
-    // Management fee check — Yes = qualified
     if (titleLower.includes('management is')) {
       if (valueLower === 'yes') isQualified = true;
     }
@@ -225,24 +217,30 @@ async function addGHLNote(contactId, noteText) {
       'Content-Type': 'application/json',
       'Version': '2021-07-28'
     };
+
+    // Add to contact notes
     await axios.post(
       `https://services.leadconnectorhq.com/contacts/${contactId}/notes`,
       { body: noteText },
       { headers }
     );
+    console.log('Contact note added for:', contactId);
+
+    // Find opportunity and update notes field
     const oppResponse = await axios.get(
       `https://services.leadconnectorhq.com/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&contact_id=${contactId}`,
       { headers }
     );
     const opportunities = oppResponse.data?.opportunities || [];
     const opportunity = opportunities.find(o => o.pipelineId === process.env.GHL_PIPELINE_ID) || opportunities[0];
+
     if (opportunity) {
-      await axios.post(
-        `https://services.leadconnectorhq.com/opportunities/${opportunity.id}/notes`,
-        { body: noteText },
+      await axios.put(
+        `https://services.leadconnectorhq.com/opportunities/${opportunity.id}`,
+        { notes: noteText },
         { headers }
       );
-      console.log('Opportunity note added:', opportunity.id);
+      console.log('Opportunity notes updated for:', opportunity.id);
     }
   } catch (err) {
     console.error('GHL note error:', err.response?.data || err.message);
@@ -262,7 +260,6 @@ router.post('/webhook', async (req, res) => {
     let lastName = '';
     let email = '';
     let companyName = '';
-    let website = '';
     let calendlyValue = '';
     const noteLines = ['📋 TikTok Shop Application:\n'];
 
@@ -288,20 +285,17 @@ router.post('/webhook', async (req, res) => {
         case 'url':
           value = answer.url || '';
           if (value.includes('calendly.com') && value.includes('invitees')) {
-            hasCalendly = true;
-            calendlyValue = value;
+            if (!hasCalendly) { hasCalendly = true; calendlyValue = value; }
             return;
           }
           break;
         case 'calendly':
-          hasCalendly = true;
-          calendlyValue = answer.url || '';
+          if (!hasCalendly) { hasCalendly = true; calendlyValue = answer.url || ''; }
           return;
         default:
           value = answer.url || answer.text || answer.email || '';
           if (value && value.includes('calendly.com') && value.includes('invitees')) {
-            hasCalendly = true;
-            calendlyValue = value;
+            if (!hasCalendly) { hasCalendly = true; calendlyValue = value; }
             return;
           }
       }
@@ -310,7 +304,6 @@ router.post('/webhook', async (req, res) => {
       if (titleLower.includes('first name')) firstName = value;
       if (titleLower.includes('last name')) lastName = value;
       if (titleLower.includes('brand name')) companyName = value;
-      if (titleLower.includes('website')) website = value;
 
       if (value) {
         noteLines.push(`${fieldTitle}: ${value}`);
