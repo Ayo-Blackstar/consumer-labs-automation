@@ -60,29 +60,49 @@ function determineQualification(answers, fields_def) {
     let value = '';
     if (answer.type === 'choice') value = answer.choice?.label || '';
     else if (answer.type === 'text') value = answer.text || '';
-    const valueLower = value.toLowerCase();
+    const valueLower = value.toLowerCase().trim();
 
+    // Revenue check — £500K+ = high revenue (exclude values starting with <)
     if (titleLower.includes('turn over')) {
       if (
-        valueLower.includes('500k') || valueLower.includes('500k–1m') ||
-        valueLower.includes('1m') || valueLower.includes('2m') ||
-        valueLower.includes('5m') || valueLower.includes('10m') ||
-        valueLower.includes('£1') || valueLower.includes('£2') ||
-        valueLower.includes('£5') || valueLower.includes('£10')
+        !valueLower.startsWith('<') &&
+        (
+          valueLower.includes('500k') ||
+          valueLower.includes('500k–1m') ||
+          valueLower.includes('1m') ||
+          valueLower.includes('2m') ||
+          valueLower.includes('5m') ||
+          valueLower.includes('10m') ||
+          valueLower.includes('£1') ||
+          valueLower.includes('£2') ||
+          valueLower.includes('£5') ||
+          valueLower.includes('£10')
+        )
       ) hasHighRevenue = true;
     }
 
+    // Ad spend check — £5K+ = has budget (exclude values starting with <)
     if (titleLower.includes('ad spend')) {
       if (
-        valueLower.includes('£5') || valueLower.includes('£10') ||
-        valueLower.includes('£25') || valueLower.includes('£50') ||
-        valueLower.includes('5k') || valueLower.includes('10k') ||
-        valueLower.includes('25k') || valueLower.includes('50k') ||
-        valueLower.includes('5–10') || valueLower.includes('10–25') ||
-        valueLower.includes('25k+') || valueLower.includes('>£25')
+        !valueLower.startsWith('<') &&
+        (
+          valueLower.includes('£5') ||
+          valueLower.includes('£10') ||
+          valueLower.includes('£25') ||
+          valueLower.includes('£50') ||
+          valueLower.includes('5k') ||
+          valueLower.includes('10k') ||
+          valueLower.includes('25k') ||
+          valueLower.includes('50k') ||
+          valueLower.includes('5–10') ||
+          valueLower.includes('10–25') ||
+          valueLower.includes('25k+') ||
+          valueLower.includes('>£25')
+        )
       ) hasAdBudget = true;
     }
 
+    // Management fee check — Yes = qualified
     if (titleLower.includes('management is')) {
       if (valueLower === 'yes') isQualified = true;
     }
