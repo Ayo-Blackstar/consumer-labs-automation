@@ -62,58 +62,44 @@ function determineQualification(answers, fields_def) {
     else if (answer.type === 'text') value = answer.text || '';
     const valueLower = value.toLowerCase().trim();
 
-    // Revenue check — £500K+ = high revenue (exclude values starting with <)
     if (titleLower.includes('turn over')) {
       if (
         !valueLower.startsWith('<') &&
         (
-          valueLower.includes('500k') ||
-          valueLower.includes('500k–1m') ||
-          valueLower.includes('1m') ||
-          valueLower.includes('2m') ||
-          valueLower.includes('5m') ||
-          valueLower.includes('10m') ||
-          valueLower.includes('£1') ||
-          valueLower.includes('£2') ||
-          valueLower.includes('£5') ||
-          valueLower.includes('£10')
+          valueLower.includes('500k') || valueLower.includes('500k–1m') ||
+          valueLower.includes('1m') || valueLower.includes('2m') ||
+          valueLower.includes('5m') || valueLower.includes('10m') ||
+          valueLower.includes('£1') || valueLower.includes('£2') ||
+          valueLower.includes('£5') || valueLower.includes('£10')
         )
       ) hasHighRevenue = true;
     }
 
-    // Ad spend check — £5K+ = has budget (exclude values starting with <)
     if (titleLower.includes('ad spend')) {
       if (
         !valueLower.startsWith('<') &&
         (
-          valueLower.includes('£5') ||
-          valueLower.includes('£10') ||
-          valueLower.includes('£25') ||
-          valueLower.includes('£50') ||
-          valueLower.includes('5k') ||
-          valueLower.includes('10k') ||
-          valueLower.includes('25k') ||
-          valueLower.includes('50k') ||
-          valueLower.includes('5–10') ||
-          valueLower.includes('10–25') ||
-          valueLower.includes('25k+') ||
-          valueLower.includes('>£25')
+          valueLower.includes('£5') || valueLower.includes('£10') ||
+          valueLower.includes('£25') || valueLower.includes('£50') ||
+          valueLower.includes('5k') || valueLower.includes('10k') ||
+          valueLower.includes('25k') || valueLower.includes('50k') ||
+          valueLower.includes('5–10') || valueLower.includes('10–25') ||
+          valueLower.includes('25k+') || valueLower.includes('>£25')
         )
       ) hasAdBudget = true;
     }
 
-    // Management fee check — Yes = qualified
     if (titleLower.includes('management is')) {
       if (valueLower === 'yes') isQualified = true;
     }
   });
 
   if (isQualified && hasHighRevenue && hasAdBudget) {
-    return { tier: 'gold', color: COLORS.GOLD, prefix: '🥇', label: 'PREMIUM QUALIFIED' };
+    return { tier: 'gold', color: COLORS.GOLD, prefix: '🥇' };
   } else if (isQualified || hasHighRevenue) {
-    return { tier: 'green', color: COLORS.GREEN, prefix: '🟢', label: 'QUALIFIED' };
+    return { tier: 'green', color: COLORS.GREEN, prefix: '🟢' };
   } else {
-    return { tier: 'blue', color: COLORS.BLUE, prefix: '📞', label: 'UNQUALIFIED' };
+    return { tier: 'blue', color: COLORS.BLUE, prefix: '📞' };
   }
 }
 
@@ -237,8 +223,6 @@ async function addGHLNote(contactId, noteText) {
       'Content-Type': 'application/json',
       'Version': '2021-07-28'
     };
-
-    // Add to contact notes
     await axios.post(
       `https://services.leadconnectorhq.com/contacts/${contactId}/notes`,
       { body: noteText },
@@ -246,21 +230,19 @@ async function addGHLNote(contactId, noteText) {
     );
     console.log('Contact note added for:', contactId);
 
-    // Find opportunity and update notes field
     const oppResponse = await axios.get(
       `https://services.leadconnectorhq.com/opportunities/search?location_id=${process.env.GHL_LOCATION_ID}&contact_id=${contactId}`,
       { headers }
     );
     const opportunities = oppResponse.data?.opportunities || [];
     const opportunity = opportunities.find(o => o.pipelineId === process.env.GHL_PIPELINE_ID) || opportunities[0];
-
     if (opportunity) {
       await axios.put(
         `https://services.leadconnectorhq.com/opportunities/${opportunity.id}`,
         { notes: noteText },
         { headers }
       );
-      console.log('Opportunity notes updated for:', opportunity.id);
+      console.log('Opportunity notes updated:', opportunity.id);
     }
   } catch (err) {
     console.error('GHL note error:', err.response?.data || err.message);
@@ -349,7 +331,6 @@ router.post('/webhook', async (req, res) => {
 
     const noteText = noteLines.join('\n');
 
-    // Create GHL contact
     const contact = await createGHLContact({
       firstName,
       lastName,
@@ -360,7 +341,6 @@ router.post('/webhook', async (req, res) => {
       tags: ['typeform-lead'],
     });
 
-    // Add GHL contact link
     const fullName = `${firstName} ${lastName}`.trim() || companyName || email;
     if (contact?.id) {
       const ghlLink = getContactGHLLink(contact.id);
@@ -385,7 +365,7 @@ router.post('/webhook', async (req, res) => {
         discordFields.push({ name: 'Call Booking', value: String(calendlyValue).substring(0, 1024), inline: true });
       }
 
-      const title = `${qualification.prefix} New Call Booked - ${qualification.label}`;
+      const title = `${qualification.prefix} New Call Booked`;
       const embed = createEmbed(title, discordFields, qualification.color);
       await sendDiscordMessage(process.env.DISCORD_WEBHOOK_BOOKED_CALLS, embed);
 
@@ -396,7 +376,7 @@ router.post('/webhook', async (req, res) => {
           await addGHLNote(contact.id, noteText);
         }
 
-        const title = `${qualification.prefix} New Lead Optin - ${qualification.label}`;
+        const title = `${qualification.prefix} New Lead Optin`;
         const embed = createEmbed(title, discordFields, qualification.color);
         await sendDiscordMessage(process.env.DISCORD_WEBHOOK_NEW_LEADS, embed);
       }
